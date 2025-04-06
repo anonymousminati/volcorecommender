@@ -132,17 +132,36 @@ def recommend_events(user_id: str, user_lat: float, user_lon: float):
         logger.info("No nearby events found. Expanding search radius to 25km.")
         nearby = get_nearby_events(user_lat, user_lon, max_distance_km=25)
 
-    return score_events(nearby, prefs)
+    scored = score_events(nearby, prefs)
+
+    # Get full event details based on top N scored event IDs
+    top_event_ids = [e["event_id"] for e in scored]
+
+    full_event_response = supabase.table("events").select("*").in_("event_id", top_event_ids).execute()
+    full_event_map = {event["event_id"]: event for event in full_event_response.data or []}
+
+    enriched_events = []
+    for event in scored:
+        full_details = full_event_map.get(event["event_id"], {})
+        enriched_event = {
+            **full_details,
+            "score": event["score"],
+            "distance": event["distance"]
+        }
+        enriched_events.append(enriched_event)
+
+    return enriched_events
 
 # ---------------------------
 # Pydantic Models
 # ---------------------------
 class Event(BaseModel):
     event_id: int
-    event_name: str
-    distance: float
     score: int
-    activity_type: Optional[str] = None
+    distance: float
+
+    class Config:
+        extra = "allow"
 
 
 class RecommendationsResponse(BaseModel):
@@ -173,14 +192,7 @@ def get_recommendations(
     return RecommendationsResponse(
         user_id=user_id,
         recommendations=[
-            Event(
-                event_id=e["event_id"],
-                event_name=e["event_name"],
-                distance=round(e["distance"], 2),
-                score=e["score"],
-                activity_type=e.get("activity_type")
-            )
-            for e in recommendations
+            Event(**e) for e in recommendations
         ]
     )
 
