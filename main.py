@@ -191,9 +191,7 @@ def get_recommendations(
 
     return RecommendationsResponse(
         user_id=user_id,
-        recommendations=[
-            Event(**e) for e in recommendations
-        ]
+        recommendations=[Event(**e) for e in recommendations[:50]] if len(recommendations) >= 50 else [Event(**e) for e in recommendations]
     )
 
 # ---------------------------
